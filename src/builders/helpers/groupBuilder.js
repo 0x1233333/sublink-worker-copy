@@ -21,6 +21,17 @@ export function withDirectReject(options = []) {
     ]);
 }
 
+export function filterNodesByRegex(nodeList, regexString) {
+    if (!regexString) return [];
+    try {
+        const regex = new RegExp(regexString, 'i');
+        return nodeList.filter(node => regex.test(node.name || node.tag));
+    } catch (e) {
+        // console.warn('Invalid Regex:', e);
+        return [];
+    }
+}
+
 export function buildNodeSelectMembers({ proxyList = [], translator, groupByCountry = false, manualGroupName, countryGroupNames = [], includeAutoSelect = true }) {
     if (!translator) {
         throw new Error('buildNodeSelectMembers requires a translator function');

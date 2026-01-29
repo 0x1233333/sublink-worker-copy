@@ -3,11 +3,11 @@ import { SING_BOX_CONFIG, generateRuleSets, generateRules, getOutbounds, PREDEFI
 import { BaseConfigBuilder } from './BaseConfigBuilder.js';
 import { deepCopy, groupProxiesByCountry } from '../utils.js';
 import { addProxyWithDedup } from './helpers/proxyHelpers.js';
-import { buildSelectorMembers as buildSelectorMemberList, buildNodeSelectMembers, uniqueNames } from './helpers/groupBuilder.js';
+import { buildSelectorMembers as buildSelectorMemberList, buildNodeSelectMembers, uniqueNames, filterNodesByRegex, withDirectReject } from './helpers/groupBuilder.js';
 import { normalizeGroupName } from './helpers/groupNameUtils.js';
 
 export class SingboxConfigBuilder extends BaseConfigBuilder {
-    constructor(inputString, selectedRules, customRules, baseConfig, lang, userAgent, groupByCountry = false, enableClashUI = false, externalController, externalUiDownloadUrl, singboxVersion = '1.12', includeAutoSelect = true) {
+    constructor(inputString, selectedRules, customRules, baseConfig, lang, userAgent, groupByCountry = false, enableClashUI = false, externalController, externalUiDownloadUrl, singboxVersion = '1.12', includeAutoSelect = true, customNodeGroups = [], proxyChains = []) {
         const resolvedBaseConfig = baseConfig ?? SING_BOX_CONFIG;
         super(inputString, resolvedBaseConfig, lang, userAgent, groupByCountry, includeAutoSelect);
 
@@ -19,6 +19,8 @@ export class SingboxConfigBuilder extends BaseConfigBuilder {
         this.externalController = externalController;
         this.externalUiDownloadUrl = externalUiDownloadUrl;
         this.singboxVersion = singboxVersion;  // '1.11' or '1.12'
+        this.customNodeGroups = customNodeGroups;
+        this.proxyChains = proxyChains;
 
         if (this.config?.dns?.servers?.length > 0) {
             this.config.dns.servers[0].detour = this.t('outboundNames.Node Select');
@@ -409,7 +411,84 @@ export class SingboxConfigBuilder extends BaseConfigBuilder {
         });
     }
 
+    addCustomNodeGroups() {
+        if (!Array.isArray(this.customNodeGroups) || this.customNodeGroups.length === 0) return;
+        const allProxies = this.getProxies();
+
+        this.customNodeGroups.forEach(group => {
+            if (!group.name || !group.regex) return;
+            const filtered = filterNodesByRegex(allProxies, group.regex);
+            const proxyTags = filtered.map(p => p.tag);
+
+            if (proxyTags.length > 0) {
+                // Remove existing
+                if (this.config.outbounds) {
+                    this.config.outbounds = this.config.outbounds.filter(o => o.tag !== group.name);
+                }
+
+                this.config.outbounds.push({
+                    type: 'selector',
+                    tag: group.name,
+                    outbounds: withDirectReject(proxyTags)
+                });
+            }
+        });
+    }
+
+    addProxyChains() {
+        if (!Array.isArray(this.proxyChains) || this.proxyChains.length === 0) return;
+        const allProxies = this.getProxies();
+
+        this.proxyChains.forEach(chain => {
+            try {
+                if (!chain.name || !chain.entryRegex || !chain.exitRegex) return;
+
+                const entryGroupName = `${chain.name} - Entry`;
+
+                // 1. Create Entry Group (Selector)
+                const entryNodes = filterNodesByRegex(allProxies, chain.entryRegex);
+                if (entryNodes.length === 0) return;
+
+                const entryTags = entryNodes.map(p => p.tag);
+                this.config.outbounds.push({
+                    type: 'selector', // or urltest
+                    tag: entryGroupName,
+                    outbounds: withDirectReject(entryTags)
+                });
+
+                // 2. Clone Exit Nodes and inject detour
+                const exitNodes = filterNodesByRegex(allProxies, chain.exitRegex);
+                if (exitNodes.length === 0) return;
+
+                const modifiedExitNodeTags = [];
+                exitNodes.forEach(node => {
+                    // Clone the node
+                    const clonedNode = { ...node };
+                    // Rename to avoid conflict
+                    clonedNode.tag = `${node.tag} [${chain.name}]`;
+                    // Add detour
+                    clonedNode.detour = entryGroupName;
+
+                    this.config.outbounds.push(clonedNode);
+                    modifiedExitNodeTags.push(clonedNode.tag);
+                });
+
+                // 3. Create Exit Group (The actual Chain Group)
+                this.config.outbounds.push({
+                    type: 'selector',
+                    tag: chain.name,
+                    outbounds: withDirectReject(modifiedExitNodeTags)
+                });
+
+            } catch (e) {
+                console.error(`Error processing proxy chain ${chain.name}:`, e);
+            }
+        });
+    }
+
     formatConfig() {
+        this.addCustomNodeGroups();
+        this.addProxyChains();
         const rules = generateRules(this.selectedRules, this.customRules);
         const { site_rule_sets, ip_rule_sets } = generateRuleSets(this.selectedRules, this.customRules);
 

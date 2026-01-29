@@ -2,10 +2,10 @@ import { BaseConfigBuilder } from './BaseConfigBuilder.js';
 import { groupProxiesByCountry } from '../utils.js';
 import { SURGE_CONFIG, SURGE_SITE_RULE_SET_BASEURL, SURGE_IP_RULE_SET_BASEURL, generateRules, getOutbounds, PREDEFINED_RULE_SETS } from '../config/index.js';
 import { addProxyWithDedup } from './helpers/proxyHelpers.js';
-import { buildSelectorMembers, buildNodeSelectMembers, uniqueNames } from './helpers/groupBuilder.js';
+import { buildSelectorMembers, buildNodeSelectMembers, uniqueNames, filterNodesByRegex, withDirectReject } from './helpers/groupBuilder.js';
 
 export class SurgeConfigBuilder extends BaseConfigBuilder {
-    constructor(inputString, selectedRules, customRules, baseConfig, lang, userAgent, groupByCountry, includeAutoSelect = true) {
+    constructor(inputString, selectedRules, customRules, baseConfig, lang, userAgent, groupByCountry, includeAutoSelect = true, customNodeGroups = [], proxyChains = []) {
         const resolvedBaseConfig = baseConfig ?? SURGE_CONFIG;
         super(inputString, resolvedBaseConfig, lang, userAgent, groupByCountry, includeAutoSelect);
         this.selectedRules = selectedRules;
@@ -13,6 +13,8 @@ export class SurgeConfigBuilder extends BaseConfigBuilder {
         this.subscriptionUrl = null;
         this.countryGroupNames = [];
         this.manualGroupName = null;
+        this.customNodeGroups = customNodeGroups;
+        this.proxyChains = proxyChains;
     }
 
     setSubscriptionUrl(url) {
@@ -363,7 +365,84 @@ export class SurgeConfigBuilder extends BaseConfigBuilder {
         this.manualGroupName = manualGroupName;
     }
 
+    addCustomNodeGroups() {
+        if (!Array.isArray(this.customNodeGroups) || this.customNodeGroups.length === 0) return;
+        const allProxies = this.getValidProxies();
+        const proxyObjects = allProxies.map(p => ({
+            name: this.getProxyName(p),
+            original: p
+        }));
+
+        this.customNodeGroups.forEach(group => {
+            if (!group.name || !group.regex) return;
+            const filtered = filterNodesByRegex(proxyObjects, group.regex);
+            const proxyNames = filtered.map(p => p.name);
+
+            if (proxyNames.length > 0) {
+                if (!this.hasProxyGroup(group.name)) {
+                    this.config['proxy-groups'].push(
+                        this.createProxyGroup(group.name, 'select', this.sanitizeOptions(proxyNames))
+                    );
+                }
+            }
+        });
+    }
+
+    addProxyChains() {
+        if (!Array.isArray(this.proxyChains) || this.proxyChains.length === 0) return;
+        const allProxies = this.getValidProxies();
+        const proxyObjects = allProxies.map(p => ({
+            name: this.getProxyName(p),
+            original: p
+        }));
+
+        this.proxyChains.forEach(chain => {
+            try {
+                if (!chain.name || !chain.entryRegex || !chain.exitRegex) return;
+
+                const entryGroupName = `${chain.name} - Entry`;
+
+                // 1. Entry Group
+                const entryNodes = filterNodesByRegex(proxyObjects, chain.entryRegex);
+                if (entryNodes.length === 0) return;
+                const entryNames = entryNodes.map(p => p.name);
+
+                this.config['proxy-groups'].push(
+                    this.createProxyGroup(entryGroupName, 'select', this.sanitizeOptions(entryNames))
+                );
+
+                // 2. Clone Exit Nodes with underlying-proxy
+                const exitNodes = filterNodesByRegex(proxyObjects, chain.exitRegex);
+                if (exitNodes.length === 0) return;
+
+                const modifiedExitNodeNames = [];
+                exitNodes.forEach(node => {
+                    const parts = node.original.split('=');
+                    const originalName = parts[0].trim();
+                    const config = parts.slice(1).join('=');
+
+                    const newName = `${originalName} [${chain.name}]`;
+                    // Ensure we trim and adding underlying-proxy correctly
+                    const newConfig = `${newName} =${config}, underlying-proxy=${entryGroupName}`;
+
+                    this.config.proxies.push(newConfig);
+                    modifiedExitNodeNames.push(newName);
+                });
+
+                // 3. Exit Group
+                this.config['proxy-groups'].push(
+                    this.createProxyGroup(chain.name, 'select', this.sanitizeOptions(modifiedExitNodeNames))
+                );
+
+            } catch (e) {
+                console.error(`Error processing proxy chain ${chain.name}:`, e);
+            }
+        });
+    }
+
     formatConfig() {
+        this.addCustomNodeGroups();
+        this.addProxyChains();
         const rules = generateRules(this.selectedRules, this.customRules);
         let finalConfig = [];
 

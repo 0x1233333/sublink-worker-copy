@@ -3,12 +3,12 @@ import { CLASH_CONFIG, generateRules, generateClashRuleSets, getOutbounds, PREDE
 import { BaseConfigBuilder } from './BaseConfigBuilder.js';
 import { deepCopy, groupProxiesByCountry } from '../utils.js';
 import { addProxyWithDedup } from './helpers/proxyHelpers.js';
-import { buildSelectorMembers, buildNodeSelectMembers, uniqueNames } from './helpers/groupBuilder.js';
+import { buildSelectorMembers, buildNodeSelectMembers, uniqueNames, filterNodesByRegex, withDirectReject } from './helpers/groupBuilder.js';
 import { emitClashRules, sanitizeClashProxyGroups } from './helpers/clashConfigUtils.js';
 import { normalizeGroupName, findGroupIndexByName } from './helpers/groupNameUtils.js';
 
 export class ClashConfigBuilder extends BaseConfigBuilder {
-    constructor(inputString, selectedRules, customRules, baseConfig, lang, userAgent, groupByCountry = false, enableClashUI = false, externalController, externalUiDownloadUrl, includeAutoSelect = true) {
+    constructor(inputString, selectedRules, customRules, baseConfig, lang, userAgent, groupByCountry = false, enableClashUI = false, externalController, externalUiDownloadUrl, includeAutoSelect = true, customNodeGroups = [], proxyChains = []) {
         if (!baseConfig) {
             baseConfig = CLASH_CONFIG;
         }
@@ -20,6 +20,8 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
         this.enableClashUI = enableClashUI;
         this.externalController = externalController;
         this.externalUiDownloadUrl = externalUiDownloadUrl;
+        this.customNodeGroups = customNodeGroups;
+        this.proxyChains = proxyChains;
     }
 
     /**
@@ -546,12 +548,87 @@ export class ClashConfigBuilder extends BaseConfigBuilder {
         });
     }
 
+    addCustomNodeGroups() {
+        if (!Array.isArray(this.customNodeGroups) || this.customNodeGroups.length === 0) return;
+        const allProxies = this.getProxies();
+
+        this.customNodeGroups.forEach(group => {
+            if (!group.name || !group.regex) return;
+            const filtered = filterNodesByRegex(allProxies, group.regex);
+            const proxyNames = filtered.map(p => p.name);
+
+            if (proxyNames.length > 0) {
+                // Remove any existing group with the same name to avoid duplicates
+                this.config['proxy-groups'] = this.config['proxy-groups'].filter(g => g.name !== group.name);
+
+                this.config['proxy-groups'].push({
+                    name: group.name,
+                    type: 'select',
+                    proxies: withDirectReject(proxyNames)
+                });
+            }
+        });
+    }
+
+    addProxyChains() {
+        if (!Array.isArray(this.proxyChains) || this.proxyChains.length === 0) return;
+        const allProxies = this.getProxies();
+
+        this.proxyChains.forEach(chain => {
+            try {
+                if (!chain.name || !chain.entryRegex || !chain.exitRegex) return;
+
+                const entryGroupName = `${chain.name} - Entry`;
+
+                // 1. Create Entry Group
+                const entryNodes = filterNodesByRegex(allProxies, chain.entryRegex);
+                if (entryNodes.length === 0) return;
+
+                const entryNodeNames = entryNodes.map(p => p.name);
+                this.config['proxy-groups'].push({
+                    name: entryGroupName,
+                    type: 'select', // or url-test? usually select for chains unless specified
+                    proxies: withDirectReject(entryNodeNames)
+                });
+
+                // 2. Clone Exit Nodes and inject dialer-proxy
+                const exitNodes = filterNodesByRegex(allProxies, chain.exitRegex);
+                if (exitNodes.length === 0) return;
+
+                const modifiedExitNodeNames = [];
+                exitNodes.forEach(node => {
+                    // Clone the node
+                    const clonedNode = { ...node };
+                    // Rename to avoid conflict
+                    clonedNode.name = `${node.name} [${chain.name}]`;
+                    // Add dialer-proxy
+                    clonedNode['dialer-proxy'] = entryGroupName;
+
+                    this.config.proxies.push(clonedNode);
+                    modifiedExitNodeNames.push(clonedNode.name);
+                });
+
+                // 3. Create Exit Group (The actual Chain Group)
+                this.config['proxy-groups'].push({
+                    name: chain.name,
+                    type: 'select',
+                    proxies: withDirectReject(modifiedExitNodeNames)
+                });
+
+            } catch (e) {
+                console.error(`Error processing proxy chain ${chain.name}:`, e);
+            }
+        });
+    }
+
     // 生成规则
     generateRules() {
         return generateRules(this.selectedRules, this.customRules);
     }
 
     formatConfig() {
+        this.addCustomNodeGroups();
+        this.addProxyChains();
         const rules = this.generateRules();
         const { site_rule_providers, ip_rule_providers } = generateClashRuleSets(this.selectedRules, this.customRules);
         this.config['rule-providers'] = {

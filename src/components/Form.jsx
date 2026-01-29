@@ -1,6 +1,9 @@
 /** @jsxRuntime automatic */
 /** @jsxImportSource hono/jsx */
 import { CustomRules } from './CustomRules.jsx';
+import { CustomRules } from './CustomRules.jsx';
+import { CustomNodeGroups } from './CustomNodeGroups.jsx';
+import { ProxyChains } from './ProxyChains.jsx';
 import { TextareaWithActions } from './TextareaWithActions.jsx';
 import { ValidatedTextarea } from './ValidatedTextarea.jsx';
 import { formLogicFn } from './formLogic.js';
@@ -155,7 +158,10 @@ export const Form = (props) => {
           </div>
 
   {/* Custom Rules Component */ }
+  {/* Custom Rules Component */ }
   <CustomRules t={t} />
+  <CustomNodeGroups t={t} />
+  <ProxyChains t={t} />
 
     {/* General Options */ }
     <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
