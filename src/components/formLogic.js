@@ -11,8 +11,6 @@ export const formLogicFn = (t) => {
                 customRules: false, // 自定义规则
                 general: false,     // 通用设置
                 baseConfig: false,  // 基础配置
-                general: false,     // 通用设置
-                baseConfig: false,  // 基础配置
                 ua: false,          // User Agent
                 customNodeGroups: false, // 自定义节点组
                 proxyChains: false  // 代理链路

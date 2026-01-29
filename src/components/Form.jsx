@@ -1,7 +1,7 @@
 /** @jsxRuntime automatic */
 /** @jsxImportSource hono/jsx */
 import { CustomRules } from './CustomRules.jsx';
-import { CustomRules } from './CustomRules.jsx';
+
 import { CustomNodeGroups } from './CustomNodeGroups.jsx';
 import { ProxyChains } from './ProxyChains.jsx';
 import { TextareaWithActions } from './TextareaWithActions.jsx';
