@@ -84,6 +84,8 @@ export function createApp(bindings = {}) {
             const externalController = c.req.query('external_controller');
             const externalUiDownloadUrl = c.req.query('external_ui_download_url');
             const configId = c.req.query('configId');
+            const customNodeGroups = parseJsonArray(c.req.query('customNodeGroups'));
+            const proxyChains = parseJsonArray(c.req.query('proxyChains'));
             const lang = c.get('lang');
 
             const requestedSingboxVersion = c.req.query('singbox_version') || c.req.query('sb_version') || c.req.query('sb_ver');
@@ -111,7 +113,11 @@ export function createApp(bindings = {}) {
                 externalController,
                 externalUiDownloadUrl,
                 singboxConfigVersion,
-                includeAutoSelect
+                externalUiDownloadUrl,
+                singboxConfigVersion,
+                includeAutoSelect,
+                customNodeGroups,
+                proxyChains
             );
             await builder.build();
             return c.json(builder.config);
@@ -136,6 +142,8 @@ export function createApp(bindings = {}) {
             const externalController = c.req.query('external_controller');
             const externalUiDownloadUrl = c.req.query('external_ui_download_url');
             const configId = c.req.query('configId');
+            const customNodeGroups = parseJsonArray(c.req.query('customNodeGroups'));
+            const proxyChains = parseJsonArray(c.req.query('proxyChains'));
             const lang = c.get('lang');
 
             let baseConfig;
@@ -155,7 +163,11 @@ export function createApp(bindings = {}) {
                 enableClashUI,
                 externalController,
                 externalUiDownloadUrl,
-                includeAutoSelect
+                externalController,
+                externalUiDownloadUrl,
+                includeAutoSelect,
+                customNodeGroups,
+                proxyChains
             );
             await builder.build();
             return c.text(builder.formatConfig(), 200, {
@@ -179,6 +191,8 @@ export function createApp(bindings = {}) {
             const groupByCountry = parseBooleanFlag(c.req.query('group_by_country'));
             const includeAutoSelect = c.req.query('include_auto_select') !== 'false';
             const configId = c.req.query('configId');
+            const customNodeGroups = parseJsonArray(c.req.query('customNodeGroups'));
+            const proxyChains = parseJsonArray(c.req.query('proxyChains'));
             const lang = c.get('lang');
 
             let baseConfig;
@@ -195,7 +209,11 @@ export function createApp(bindings = {}) {
                 lang,
                 ua,
                 groupByCountry,
-                includeAutoSelect
+                ua,
+                groupByCountry,
+                includeAutoSelect,
+                customNodeGroups,
+                proxyChains
             );
             builder.setSubscriptionUrl(c.req.url);
             await builder.build();

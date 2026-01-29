@@ -66,6 +66,8 @@ Sing-Box • Clash • Xray/V2Ray • Surge
 - Flexible API for script automation
 - Multi-language support (Chinese, English, Persian, Russian)
 - Web interface with predefined rule sets and customizable policy groups
+- **(New) Custom Node Groups**: Create custom groups filtering nodes by Regex.
+- **(New) Proxy Chains**: Easily configure relay chains (Entry -> Exit) for Clash, Sing-box, and Surge.
 
 ## 🤝 Contributing
 

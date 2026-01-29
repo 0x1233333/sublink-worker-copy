@@ -11,9 +11,15 @@ export const formLogicFn = (t) => {
                 customRules: false, // 自定义规则
                 general: false,     // 通用设置
                 baseConfig: false,  // 基础配置
-                ua: false          // User Agent
+                general: false,     // 通用设置
+                baseConfig: false,  // 基础配置
+                ua: false,          // User Agent
+                customNodeGroups: false, // 自定义节点组
+                proxyChains: false  // 代理链路
             },
             selectedRules: [],
+            customNodeGroups: [],
+            proxyChains: [],
             selectedPredefinedRule: 'balanced',
             groupByCountry: false,
             includeAutoSelect: true,
@@ -74,6 +80,16 @@ export const formLogicFn = (t) => {
                 const initialUrlParams = new URLSearchParams(window.location.search);
                 this.currentConfigId = initialUrlParams.get('configId') || '';
 
+                // Load customNodeGroups and proxyChains
+                try {
+                    const savedGroups = localStorage.getItem('customNodeGroups');
+                    if (savedGroups) this.customNodeGroups = JSON.parse(savedGroups);
+                } catch (e) { }
+                try {
+                    const savedChains = localStorage.getItem('proxyChains');
+                    if (savedChains) this.proxyChains = JSON.parse(savedChains);
+                } catch (e) { }
+
                 // Load accordion states
                 const savedAccordion = localStorage.getItem('accordionSections');
                 if (savedAccordion) {
@@ -108,6 +124,12 @@ export const formLogicFn = (t) => {
                     this.resetConfigValidation();
                 });
                 this.$watch('customShortCode', val => localStorage.setItem('customShortCode', val));
+                this.$watch('customShortCode', val => localStorage.setItem('customShortCode', val));
+                // Custom Node Groups & Proxy Chains are not saved to localStorage specific keys?
+                // Maybe we should? For now, we rely on URL or simple persistence if desired. 
+                // Let's persist them to localStorage for convenience.
+                this.$watch('customNodeGroups', val => localStorage.setItem('customNodeGroups', JSON.stringify(val)), { deep: true });
+                this.$watch('proxyChains', val => localStorage.setItem('proxyChains', JSON.stringify(val)), { deep: true });
                 this.$watch('accordionSections', val => localStorage.setItem('accordionSections', JSON.stringify(val)), { deep: true });
             },
 
@@ -262,7 +284,15 @@ export const formLogicFn = (t) => {
                     params.append('config', this.input);
                     params.append('ua', this.customUA);
                     params.append('selectedRules', JSON.stringify(this.selectedRules));
+                    params.append('selectedRules', JSON.stringify(this.selectedRules));
                     params.append('customRules', JSON.stringify(customRules));
+
+                    if (this.customNodeGroups.length > 0) {
+                        params.append('customNodeGroups', JSON.stringify(this.customNodeGroups));
+                    }
+                    if (this.proxyChains.length > 0) {
+                        params.append('proxyChains', JSON.stringify(this.proxyChains));
+                    }
 
                     if (this.groupByCountry) params.append('group_by_country', 'true');
                     if (!this.includeAutoSelect) params.append('include_auto_select', 'false');
@@ -505,6 +535,24 @@ export const formLogicFn = (t) => {
                     }
                 }
 
+                // Extract customNodeGroups
+                const customNodeGroups = params.get('customNodeGroups');
+                if (customNodeGroups) {
+                    try {
+                        const parsed = JSON.parse(customNodeGroups);
+                        if (Array.isArray(parsed)) this.customNodeGroups = parsed;
+                    } catch (e) { }
+                }
+
+                // Extract proxyChains
+                const proxyChains = params.get('proxyChains');
+                if (proxyChains) {
+                    try {
+                        const parsed = JSON.parse(proxyChains);
+                        if (Array.isArray(parsed)) this.proxyChains = parsed;
+                    } catch (e) { }
+                }
+
                 // Extract other parameters
                 this.groupByCountry = params.get('group_by_country') === 'true';
                 this.includeAutoSelect = params.get('include_auto_select') !== 'false';
@@ -533,7 +581,8 @@ export const formLogicFn = (t) => {
 
                 // Expand advanced options if any advanced settings are present
                 if (selectedRules || customRules || this.groupByCountry || this.enableClashUI ||
-                    externalController || externalUiDownloadUrl || ua || configId) {
+                    externalController || externalUiDownloadUrl || ua || configId ||
+                    customNodeGroups || proxyChains) {
                     this.showAdvanced = true;
                 }
             }
